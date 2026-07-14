@@ -38,11 +38,14 @@ pub struct Database {
 #[derive(Default)]
 pub struct Peer {
     pub guid: Vec<u8>,
+    #[allow(unused)]
     pub id: String,
     pub uuid: Vec<u8>,
     pub pk: Vec<u8>,
+    #[allow(unused)]
     pub user: Option<Vec<u8>>,
     pub info: String,
+    #[allow(unused)]
     pub status: Option<i64>,
 }
 

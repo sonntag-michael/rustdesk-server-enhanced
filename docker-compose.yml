@@ -1,8 +1,7 @@
-version: '3'
 
 networks:
   rustdesk-net:
-    external: false
+    #external: false
 
 services:
   hbbs:
@@ -12,25 +11,38 @@ services:
       - 21116:21116
       - 21116:21116/udp
       - 21118:21118
-    image: rustdesk/rustdesk-server:latest
-    command: hbbs -r rustdesk.example.com:21117
+    build: .
+    command: hbbs
     volumes:
-      - ./data:/root
+      - ./data:/root:z
     networks:
       - rustdesk-net
     depends_on:
       - hbbr
     restart: unless-stopped
+    environment:
+      LOGGED_IN_ONLY: N
+      ALWAYS_USE_RELAY: N
+      ENFORCE_ACCESS_CHECKS: T
+    logging:
+      driver: journald
+      options:
+        tag: docker/rustdesk-hbbs
 
   hbbr:
     container_name: hbbr
     ports:
       - 21117:21117
       - 21119:21119
-    image: rustdesk/rustdesk-server:latest
+    build: .
     command: hbbr
     volumes:
-      - ./data:/root
+      - ./data:/root:z
     networks:
       - rustdesk-net
     restart: unless-stopped
+    logging:
+      driver: journald
+      options:
+        tag: docker/rustdesk-hbbr
+

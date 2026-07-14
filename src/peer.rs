@@ -11,6 +11,7 @@ use serde_derive::{Deserialize, Serialize};
 use std::{collections::HashMap, collections::HashSet, net::SocketAddr, sync::Arc, time::Instant};
 
 type IpBlockMap = HashMap<String, ((u32, Instant), (HashSet<String>, Instant))>;
+#[allow(unused)]
 type UserStatusMap = HashMap<Vec<u8>, Arc<(Option<Vec<u8>>, bool)>>;
 type IpChangesMap = HashMap<String, (Instant, HashMap<String, i32>)>;
 lazy_static::lazy_static! {
@@ -68,6 +69,7 @@ pub(crate) struct PeerMap {
 impl PeerMap {
     pub(crate) async fn new() -> ResultType<Self> {
         let db = std::env::var("DB_URL").unwrap_or({
+            #[allow(unused)]
             let mut db = "db_v2.sqlite3".to_owned();
             #[cfg(all(windows, not(debug_assertions)))]
             {
@@ -172,9 +174,10 @@ impl PeerMap {
     pub(crate) async fn get_in_memory(&self, id: &str) -> Option<LockPeer> {
         self.map.read().await.get(id).cloned()
     }
-
+    /*
     #[inline]
     pub(crate) async fn is_in_memory(&self, id: &str) -> bool {
         self.map.read().await.contains_key(id)
     }
+    */
 }
