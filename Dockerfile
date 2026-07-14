@@ -3,12 +3,12 @@ FROM rust:${RUST_VERSION}-alpine AS build
 WORKDIR /src
 # Various additional dependencies requried for compiling
 RUN apk update && apk add openssl openssl-dev openssl-libs-static make g++ file 
-RUN --mount=type=bind,source=build/src,target=src,readwrite \
-    --mount=type=bind,source=build/libs,target=libs,readwrite \
-    --mount=type=bind,source=build/Cargo.toml,target=Cargo.toml \
-    --mount=type=bind,source=build/Cargo.lock,target=Cargo.lock,readwrite \
-    --mount=type=bind,source=build/db_v2.sqlite3,target=db_v2.sqlite3,readwrite \
-    --mount=type=bind,source=build/build.rs,target=build.rs \
+RUN --mount=type=bind,source=src,target=src,readwrite \
+    --mount=type=bind,source=libs,target=libs,readwrite \
+    --mount=type=bind,source=Cargo.toml,target=Cargo.toml \
+    --mount=type=bind,source=Cargo.lock,target=Cargo.lock,readwrite \
+    --mount=type=bind,source=db_v2.sqlite3,target=db_v2.sqlite3,readwrite \
+    --mount=type=bind,source=build.rs,target=build.rs \
     --mount=type=cache,target=/src/target \
     --mount=type=cache,target=/usr/local/cargo/registry/ \
     <<EOF
