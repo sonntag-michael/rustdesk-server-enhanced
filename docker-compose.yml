@@ -24,6 +24,7 @@ services:
       LOGGED_IN_ONLY: N
       ALWAYS_USE_RELAY: N
       ENFORCE_ACCESS_CHECKS: T
+      API_SERVER: ${API_SERVER}
     logging:
       driver: journald
       options:
