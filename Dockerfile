@@ -1,4 +1,4 @@
-ARG RUST_VERSION=1.91
+ARG RUST_VERSION=1.95
 FROM rust:${RUST_VERSION}-alpine AS build
 WORKDIR /src
 # Various additional dependencies requried for compiling

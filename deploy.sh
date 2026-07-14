@@ -3,7 +3,7 @@
 git pull
 
 # Get communication library
-git submodule update --recursive --remote
+git submodule update --init --recursive --remote
 
 # Stop containers
 docker compose down

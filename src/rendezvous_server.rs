@@ -212,6 +212,9 @@ impl RendezvousServer {
                 "N"
             }
         );
+        log::info!("API_SERVER={}",
+            std::env::var("API_SERVER").unwrap_or_else(|_| "http://127.0.0.1:21114".to_string())
+        );
         if test_addr.to_lowercase() != "no" {
             let test_addr = if test_addr.is_empty() {
                 listener.local_addr()?
