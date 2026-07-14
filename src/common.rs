@@ -10,6 +10,7 @@ use std::{
     net::SocketAddr,
     time::{Instant, SystemTime},
 };
+use base64::prelude::*;
 
 #[allow(dead_code)]
 pub(crate) fn get_expired_time() -> Instant {
@@ -62,23 +63,29 @@ pub fn init_args(args: &str, name: &str, about: &str) {
         .get_matches();
     if let Ok(v) = Ini::load_from_file(".env") {
         if let Some(section) = v.section(None::<String>) {
-            section
-                .iter()
-                .for_each(|(k, v)| std::env::set_var(arg_name(k), v));
+            unsafe {
+                section
+                    .iter()
+                   .for_each(|(k, v)| std::env::set_var(arg_name(k), v));
+            }
         }
     }
     if let Some(config) = matches.value_of("config") {
         if let Ok(v) = Ini::load_from_file(config) {
             if let Some(section) = v.section(None::<String>) {
-                section
-                    .iter()
-                    .for_each(|(k, v)| std::env::set_var(arg_name(k), v));
+                unsafe {
+                    section
+                        .iter()
+                        .for_each(|(k, v)| std::env::set_var(arg_name(k), v));
+                }
             }
         }
     }
     for (k, v) in matches.args {
         if let Some(v) = v.vals.first() {
-            std::env::set_var(arg_name(k), v.to_string_lossy().to_string());
+            unsafe {
+                std::env::set_var(arg_name(k), v.to_string_lossy().to_string());
+            }
         }
     }
 }
@@ -113,11 +120,11 @@ pub fn gen_sk(wait: u64) -> (String, Option<sign::SecretKey>) {
         let mut contents = String::new();
         if file.read_to_string(&mut contents).is_ok() {
             let contents = contents.trim();
-            let sk = base64::decode(contents).unwrap_or_default();
+            let sk = BASE64_STANDARD.decode(contents).unwrap_or_default();
             if sk.len() == sign::SECRETKEYBYTES {
                 let mut tmp = [0u8; sign::SECRETKEYBYTES];
                 tmp[..].copy_from_slice(&sk);
-                let pk = base64::encode(&tmp[sign::SECRETKEYBYTES / 2..]);
+                let pk = BASE64_STANDARD.encode(&tmp[sign::SECRETKEYBYTES / 2..]);
                 log::info!("Private key comes from {}", sk_file);
                 return (pk, Some(sign::SecretKey(tmp)));
             } else {
@@ -129,7 +136,7 @@ pub fn gen_sk(wait: u64) -> (String, Option<sign::SecretKey>) {
     } else {
         let gen_func = || {
             let (tmp, sk) = sign::gen_keypair();
-            (base64::encode(tmp), sk)
+            (BASE64_STANDARD.encode(tmp), sk)
         };
         let (mut pk, mut sk) = gen_func();
         for _ in 0..300 {
@@ -142,7 +149,7 @@ pub fn gen_sk(wait: u64) -> (String, Option<sign::SecretKey>) {
         if let Ok(mut f) = std::fs::File::create(&pub_file) {
             f.write_all(pk.as_bytes()).ok();
             if let Ok(mut f) = std::fs::File::create(sk_file) {
-                let s = base64::encode(&sk);
+                let s = BASE64_STANDARD.encode(&sk);
                 if f.write_all(s.as_bytes()).is_ok() {
                     log::info!("Private/public key written to {}/{}", sk_file, pub_file);
                     log::debug!("Public key: {}", pk);

@@ -27,6 +27,7 @@ use std::{
     net::SocketAddr,
     sync::atomic::{AtomicUsize, Ordering},
 };
+use base64::prelude::*;
 
 type Usage = (usize, usize, usize, usize);
 
@@ -567,10 +568,10 @@ async fn relay(
 
 fn get_server_sk(key: &str) -> String {
     let mut key = key.to_owned();
-    if let Ok(sk) = base64::decode(&key) {
+    if let Ok(sk) = BASE64_STANDARD.decode(&key) {
         if sk.len() == sign::SECRETKEYBYTES {
             log::info!("The key is a crypto private key");
-            key = base64::encode(&sk[(sign::SECRETKEYBYTES / 2)..]);
+            key = BASE64_STANDARD.encode(&sk[(sign::SECRETKEYBYTES / 2)..]);
         }
     }
 

@@ -25,7 +25,9 @@ fn main() -> ResultType<()> {
         .get_matches();
     if let Ok(v) = ini::Ini::load_from_file(".env") {
         if let Some(section) = v.section(None::<String>) {
-            section.iter().for_each(|(k, v)| std::env::set_var(k, v));
+            unsafe {
+                section.iter().for_each(|(k, v)| std::env::set_var(k, v));
+            }
         }
     }
     let mut port = RELAY_PORT;
