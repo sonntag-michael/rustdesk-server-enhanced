@@ -17,7 +17,7 @@ fn main() -> ResultType<()> {
     let args = vec![
         Arg::new("configfile").short('c').long("config").value_parser(clap::builder::NonEmptyStringValueParser::new()).help("Sets a custom config file"),
         Arg::new("port").short('p').long("port").value_parser(clap::builder::NonEmptyStringValueParser::new()).default_value(RENDEZVOUS_PORT.to_string()).help("Sets the listening port"),
-        Arg::new("serial").short('s').long("serial").value_parser(clap::value_parser!(u16)).default_value("0".to_string()).help("Sets configure update serial number"),
+        Arg::new("serial").short('s').long("serial").value_parser(clap::builder::NonEmptyStringValueParser::new()).default_value("0".to_string()).help("Sets configure update serial number"),
         Arg::new("rendezvous-servers").short('R').long("rendezvous-servers").value_parser(clap::builder::NonEmptyStringValueParser::new()).help("Sets rendezvous servers, separated by comma"),
         Arg::new("software URL").short('u').long("software-url").value_parser(clap::builder::NonEmptyStringValueParser::new()).help("Sets a custom config file"),
         Arg::new("relay-servers").short('r').long("relay-servers").value_parser(clap::builder::NonEmptyStringValueParser::new()).help("Sets the default relay servers, separated by comma"),
