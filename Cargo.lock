@@ -1852,7 +1852,7 @@ dependencies = [
  "base64",
  "bcrypt",
  "chrono",
- "clap 2.34.0",
+ "clap 4.6.1",
  "deadpool",
  "dns-lookup",
  "flate2",

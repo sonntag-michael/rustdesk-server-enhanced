@@ -1,4 +1,4 @@
-use clap::App;
+use clap::{Arg, Command};
 use hbb_common::{
     allow_err, anyhow::{Context, Result}, get_version_number, log, tokio, ResultType
 };
@@ -54,12 +54,12 @@ fn arg_name(name: &str) -> String {
 }
 
 #[allow(dead_code)]
-pub fn init_args(args: &str, name: &str, about: &str) {
-    let matches = App::new(name)
+pub fn init_args(args: &Vec<Arg>, name: &str, about: &str) {
+    let matches = Command::new(name.to_string())
         .version(crate::version::VERSION)
         .author("Purslane Ltd. <info@rustdesk.com>")
-        .about(about)
-        .args_from_usage(args)
+        .about(about.to_string())
+        .args(args)
         .get_matches();
     if let Ok(v) = Ini::load_from_file(".env") {
         if let Some(section) = v.section(None::<String>) {
@@ -70,7 +70,7 @@ pub fn init_args(args: &str, name: &str, about: &str) {
             }
         }
     }
-    if let Some(config) = matches.value_of("config") {
+    if let Some(config) = matches.get_one::<String>("config") {
         if let Ok(v) = Ini::load_from_file(config) {
             if let Some(section) = v.section(None::<String>) {
                 unsafe {
@@ -81,13 +81,14 @@ pub fn init_args(args: &str, name: &str, about: &str) {
             }
         }
     }
-    for (k, v) in matches.args {
-        if let Some(v) = v.vals.first() {
+    matches.ids().for_each(|k| {
+        let mut v=matches.get_many::<String>(k.as_str()).unwrap();
+        if let Some(v) = v.next() {
             unsafe {
-                std::env::set_var(arg_name(k), v.to_string_lossy().to_string());
+                std::env::set_var(arg_name(k.as_str()), v);
             }
         }
-    }
+    });
 }
 
 #[allow(dead_code)]
