@@ -1188,7 +1188,7 @@ impl RendezvousServer {
                         allow_err!(s.send(Bytes::from(bytes)).await);
                     }
                     SinkType::Ws(ws) => {
-                        allow_err!(ws.send(tungstenite::Message::Binary(bytes)).await);
+                        allow_err!(ws.send(tungstenite::Message::binary(bytes)).await);
                     }
                 }
             }

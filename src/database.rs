@@ -1,4 +1,4 @@
-use async_trait::async_trait;
+
 use hbb_common::{log, ResultType};
 use sqlx::{
     sqlite::SqliteConnectOptions, ConnectOptions, Connection, Error as SqlxError, SqliteConnection,
@@ -13,7 +13,6 @@ pub struct DbPool {
     url: String,
 }
 
-#[async_trait]
 impl deadpool::managed::Manager for DbPool {
     type Type = SqliteConnection;
     type Error = SqlxError;
@@ -25,6 +24,7 @@ impl deadpool::managed::Manager for DbPool {
     async fn recycle(
         &self,
         obj: &mut SqliteConnection,
+        _m: &deadpool::managed::Metrics,
     ) -> deadpool::managed::RecycleResult<SqlxError> {
         Ok(obj.ping().await?)
     }
@@ -59,12 +59,12 @@ impl Database {
             .parse()
             .unwrap_or(1);
         log::debug!("MAX_DATABASE_CONNECTIONS={}", n);
-        let pool = Pool::new(
+        let pool = Pool::builder(
             DbPool {
                 url: url.to_owned(),
-            },
-            n,
-        );
+            })
+            .max_size(n)
+            .build()?;
         let _ = pool.get().await?; // test
         let db = Database { pool };
         db.create_tables().await?;
