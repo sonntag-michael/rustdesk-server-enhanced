@@ -21,9 +21,15 @@ services:
       - hbbr
     restart: unless-stopped
     environment:
+      # Only allow logged-in users to control other systems: Y/N
       LOGGED_IN_ONLY: N
+      # Always use the relay, even within the same subnet: Y/N
       ALWAYS_USE_RELAY: N
+      # Enforce access checks (requires the API server!): Y/N/T
+      # (T=Test; check permissions and log result, but always grant anyway)
       ENFORCE_ACCESS_CHECKS: T
+      # Adress of API server for checking logged-in status and access permissions
+      # Example: https://rustdesk.domain.example/
       API_SERVER: ${API_SERVER}
     logging:
       driver: journald
