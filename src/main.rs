@@ -15,13 +15,13 @@ fn main() -> ResultType<()> {
         .write_mode(WriteMode::Async)
         .start()?;
     let args = vec![
-        Arg::new("configfile").short('c').long("config").value_parser(clap::builder::NonEmptyStringValueParser::new()).help("Sets a custom config file"),
+        Arg::new("config").short('c').long("config").value_parser(clap::builder::NonEmptyStringValueParser::new()).help("Sets a custom config file"),
         Arg::new("port").short('p').long("port").value_parser(clap::builder::NonEmptyStringValueParser::new()).default_value(RENDEZVOUS_PORT.to_string()).help("Sets the listening port"),
         Arg::new("serial").short('s').long("serial").value_parser(clap::builder::NonEmptyStringValueParser::new()).default_value("0".to_string()).help("Sets configure update serial number"),
         Arg::new("rendezvous-servers").short('R').long("rendezvous-servers").value_parser(clap::builder::NonEmptyStringValueParser::new()).help("Sets rendezvous servers, separated by comma"),
-        Arg::new("software URL").short('u').long("software-url").value_parser(clap::builder::NonEmptyStringValueParser::new()).help("Sets a custom config file"),
+        Arg::new("software-url").short('u').long("software-url").value_parser(clap::builder::NonEmptyStringValueParser::new()).help("Sets a custom config file"),
         Arg::new("relay-servers").short('r').long("relay-servers").value_parser(clap::builder::NonEmptyStringValueParser::new()).help("Sets the default relay servers, separated by comma"),
-        Arg::new("UDP-buffer-size").short('M').long("rmem").value_parser(clap::builder::NonEmptyStringValueParser::new()).default_value(RMEM.to_string()).help("Sets UDP recv buffer size, set system rmem_max first, e.g., sudo sysctl -w net.core.rmem_max=52428800. vi /etc/sysctl.conf, net.core.rmem_max=52428800, sudo sysctl –p"),
+        Arg::new("rmem").short('M').long("rmem").value_parser(clap::builder::NonEmptyStringValueParser::new()).default_value(RMEM.to_string()).help("Sets UDP recv buffer size, set system rmem_max first, e.g., sudo sysctl -w net.core.rmem_max=52428800. vi /etc/sysctl.conf, net.core.rmem_max=52428800, sudo sysctl –p"),
         Arg::new("mask").long("mask").value_parser(clap::builder::NonEmptyStringValueParser::new()).help("Determine if the connection comes from LAN, e.g. 192.168.0.0/16"),
         Arg::new("key").short('k').long("key").value_parser(clap::builder::NonEmptyStringValueParser::new()).help("Only allow the client with the same key"),
     ];
