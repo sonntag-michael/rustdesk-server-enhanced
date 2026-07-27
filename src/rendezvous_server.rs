@@ -31,10 +31,9 @@ use hbb_common::{
     AddrMangle, ResultType, 
 };
 use ipnetwork::Ipv4Network;
-use rd_api_server_backend::{start_api_server, join_api_server, check_authorization};
+use rd_api_server_backend::{start_api_server, join_api_server, check_logged_in, check_authorization};
 use rd_api_server_backend::core::server::ApiServer;
-use reqwest::Client;
-use serde_json::json;
+use rd_api_server_backend::access_rules::models::ConnType;
 use sodiumoxide::crypto::{
     box_, box_::PublicKey, box_::SecretKey, secretbox, secretbox::Key, secretbox::Nonce, sign,
 };
@@ -925,73 +924,43 @@ impl RendezvousServer {
         }
         // For limiting abuse, only allow logged in users to punch hole (=use the relay server)
         // if LOGGED_IN_ONLY=Y is set in env or --logged-in-only is passed
-        if std::env::var("LOGGED_IN_ONLY")
-            .unwrap_or_default()
-            .to_uppercase()
-            == "Y"
+        let logged_in_only = std::env::var("LOGGED_IN_ONLY")
+            .unwrap_or_default().trim().to_ascii_uppercase();
+        if !logged_in_only.eq("N")
         {
             let mut msg_out = RendezvousMessage::new();
             if !ph.token.is_empty() {
-                let api_server = std::env::var("API_SERVER")
-                    .unwrap_or_else(|_| "http://127.0.0.1:21114".to_string());
-                let api_url = api_server + "/api/currentUser";
-                let client = match Client::builder().connect_timeout(Duration::from_millis(500)).build() {
-                    Ok(client) => client,
-                    Err(err) => {
-                        log::error!("Error building client to contact API server: {}", err);
-                        msg_out.set_punch_hole_response(PunchHoleResponse {
-                            other_failure: String::from(
-                                "Access denied: API server could not be contacted",
-                            ),
-                            ..Default::default()
-                        });
-                        return Ok((msg_out, None));
-                    }
-                };
-                let response = match client
-                    .post(&api_url)
-                    .timeout(Duration::from_secs(2))
-                    .bearer_auth(ph.token.clone())
-                    /* Note: the id should be the one of the system requesting this information (=source);
-                     * here it is for the system to be connected to (=destination)
-                     * We don't know the uuid of either system, so leave empty...
-                     */
-                    .json(&json!({ "id": ph.id, "uuid": "" }))
-                    .send()
-                    .await {
-                    Ok(response) => response,
-                    Err(err) => {
-                        log::error!("Error contacting API server: {}", err);
-                        msg_out.set_punch_hole_response(PunchHoleResponse {
-                            other_failure: String::from(
-                                "Access denied: API server could not be contacted",
-                            ),
-                            ..Default::default()
-                        });
-                        return Ok((msg_out, None));
-                    },
-                };
-                if response.status().is_success() {
-                    let response_body: serde_json::Value = response.json().await?;
+log::error!("Auth token for logged-in check: {}", ph.token);
+                let check_result = check_logged_in(self.api_server.clone(), &ph.token).await;
+                if check_result.is_ok() {
+                    let check_result=check_result.unwrap();
+log::error!(
+    "Logged in user: Username={}, Status={}",
+    check_result.name.clone(),
+    check_result.status,
+);
                     log::debug!(
-                        "Logged in user: Username={}, Status={}",
-                        response_body["name"],
-                        response_body["status"]
-                    );
-                    if response_body["status"] != 1 {
+                    "Logged in user: Username={}, Status={}",
+                    check_result.name,
+                    check_result.status,
+                );
+                    if check_result.status != 1 {
                         // "enum UserStatus { kDisabled=0, kNormal=1, kUnverified=-1 }"
-                        log::debug!("Error checking logged in: User disabled/unverified");
+log::error!("Error checking logged in: User not enabled: {}", check_result.status);
+                        log::debug!("Error checking logged in: User not enabled: {}", check_result.status);
                         msg_out.set_punch_hole_response(PunchHoleResponse {
-                            other_failure: String::from("Access denied: Your account is disabled or unverified"),
+                            other_failure: String::from("Access denied: Your account is not enabled"),
                             ..Default::default()
                         });
                         return Ok((msg_out, None));
                     }
                 } else {
-                    log::debug!("Error checking logged in: {}", response.status());
+                    let check_result=check_result.unwrap_err();
+log::error!("User not logged in: {}", check_result.clone());
+                    log::debug!("Access denied: {}", check_result);
                     msg_out.set_punch_hole_response(PunchHoleResponse {
                         other_failure: String::from(
-                            "Access denied: Your session has expired",
+                            "Access denied: Your session is invalid",
                         ),
                         ..Default::default()
                     });
@@ -1012,7 +981,9 @@ impl RendezvousServer {
         if !access_check.eq("N") {
             let mut msg_out = RendezvousMessage::new();
 log::error!("Auth token for permission check: {}", ph.token);
-            let check_result = check_authorization(self.api_server.clone(), &ph.token, &ph.id).await;
+log::error!("System to connect to: {}", ph.id);
+log::error!("Type of connection: {:?}", ph.conn_type);
+            let check_result = check_authorization(self.api_server.clone(), &ph.token, &ph.id, ConnType::from_i32(ph.conn_type.value())).await;
             if check_result.is_ok() {
 log::error!(
     "Access granted for user {} to device {}",
