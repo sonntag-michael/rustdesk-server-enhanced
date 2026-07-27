@@ -932,8 +932,7 @@ impl RendezvousServer {
             if !ph.token.is_empty() {
 log::error!("Auth token for logged-in check: {}", ph.token);
                 let check_result = check_logged_in(self.api_server.clone(), &ph.token).await;
-                if check_result.is_ok() {
-                    let check_result=check_result.unwrap();
+                if let Ok(check_result) = check_result {
 log::error!(
     "Logged in user: Username={}, Status={}",
     check_result.name.clone(),
@@ -955,9 +954,8 @@ log::error!("Error checking logged in: User not enabled: {}", check_result.statu
                         return Ok((msg_out, None));
                     }
                 } else {
-                    let check_result=check_result.unwrap_err();
-log::error!("User not logged in: {}", check_result.clone());
-                    log::debug!("Access denied: {}", check_result);
+log::error!("User not logged in: {}", check_result.clone().unwrap_err());
+                    log::debug!("Access denied: {}", check_result.unwrap_err());
                     msg_out.set_punch_hole_response(PunchHoleResponse {
                         other_failure: String::from(
                             "Access denied: Your session is invalid",
@@ -984,15 +982,15 @@ log::error!("Auth token for permission check: {}", ph.token);
 log::error!("System to connect to: {}", ph.id);
 log::error!("Type of connection: {:?}", ph.conn_type);
             let check_result = check_authorization(self.api_server.clone(), &ph.token, &ph.id, ConnType::from_i32(ph.conn_type.value())).await;
-            if check_result.is_ok() {
+            if let Ok(check_result) = check_result {
 log::error!(
     "Access granted for user {} to device {}",
-    check_result.clone().unwrap(),
+    check_result.clone(),
     ph.id
 );
                 log::debug!(
                     "Access granted for user {} to device {}",
-                    check_result.unwrap(),
+                    check_result,
                     ph.id
                 );
             } else {
