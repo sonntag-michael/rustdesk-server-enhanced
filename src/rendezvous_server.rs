@@ -28,13 +28,15 @@ use hbb_common::{
     tokio_util::codec::Framed,
     try_into_v4,
     udp::FramedSocket,
-    AddrMangle, ResultType,
+    AddrMangle, ResultType, 
 };
 use ipnetwork::Ipv4Network;
+use rd_api_server_backend::{start_api_server, join_api_server, check_authorization};
+use rd_api_server_backend::core::server::ApiServer;
 use reqwest::Client;
 use serde_json::json;
 use sodiumoxide::crypto::{
-     box_, box_::PublicKey, box_::SecretKey, secretbox, secretbox::Key, secretbox::Nonce, sign,
+    box_, box_::PublicKey, box_::SecretKey, secretbox, secretbox::Key, secretbox::Nonce, sign,
 };
 use sodiumoxide::hex;
 use std::{
@@ -131,6 +133,7 @@ pub struct RendezvousServer {
     relay_servers0: Arc<RelayServers>,
     rendezvous_servers: Arc<Vec<String>>,
     inner: Arc<Inner>,
+    api_server: Arc<Mutex<ApiServer>>,
 }
 
 enum LoopFailure {
@@ -189,6 +192,12 @@ impl RendezvousServer {
                 secure_tcp_public_key_b,
                 secure_tcp_sym_key_b,
             }),
+            api_server: Arc::new(Mutex::new(ApiServer {
+                permissions_service: None,
+                user_service: None,
+                secret_key: None,
+                join_handle: None,
+            })),
         };
         log::info!("mask: {:?}", rs.inner.mask);
         log::info!("local-ip: {:?}", rs.inner.local_ip);
@@ -213,9 +222,10 @@ impl RendezvousServer {
                 "N"
             }
         );
-        log::info!("API_SERVER={}",
-            std::env::var("API_SERVER").unwrap_or_else(|_| "http://127.0.0.1:21114".to_string())
-        );
+
+        let api_port = get_arg_or("port", config::RENDEZVOUS_PORT.to_string()).parse::<i32>()? - 2;
+        rs.api_server = start_api_server(api_port as u16).await;
+
         if test_addr.to_lowercase() != "no" {
             let test_addr = if test_addr.is_empty() {
                 listener.local_addr()?
@@ -238,6 +248,7 @@ impl RendezvousServer {
                 }
             });
         };
+        let api_server = rs.api_server.clone();
         let main_task = async move {
             loop {
                 log::info!("Start");
@@ -272,10 +283,16 @@ impl RendezvousServer {
             }
         };
         let listen_signal = listen_signal();
-        tokio::select!(
+        let res = tokio::select!(
             res = main_task => res,
             res = listen_signal => res,
-        )
+            //_res = tokio::signal::ctrl_c() => Ok(()),
+        );
+        log::error!("Main listen terminated");
+        if let Err(error) = join_api_server(api_server).await {
+            log::error!("API server terminated with error: {}", error);
+        }
+        res
     }
 
     async fn io_loop(
@@ -390,92 +407,92 @@ impl RendezvousServer {
                     }
                 }
                 Some(rendezvous_message::Union::RegisterPk(rk)) => {
-/*
-                    if rk.uuid.is_empty() || rk.pk.is_empty() {
-                        return Ok(());
-                    }
-                    let id = rk.id;
-                    let ip = addr.ip().to_string();
-                    if id.len() < 6 {
-                        return send_rk_res(socket, addr, UUID_MISMATCH).await;
-                    } else if !self.check_ip_blocker(&ip, &id).await {
-                        return send_rk_res(socket, addr, TOO_FREQUENT).await;
-                    }
-                    let peer = self.pm.get_or(&id).await;
-                    let (changed, ip_changed) = {
-                        let peer = peer.read().await;
-                        if peer.uuid.is_empty() {
-                            (true, false)
-                        } else {
-                            if peer.uuid == rk.uuid {
-                                if peer.info.ip != ip && peer.pk != rk.pk {
-                                    log::warn!(
-                                        "Peer {} ip/pk mismatch: {}/{:?} vs {}/{:?}",
-                                        id,
-                                        ip,
-                                        rk.pk,
-                                        peer.info.ip,
-                                        peer.pk,
-                                    );
-                                    drop(peer);
-                                    return send_rk_res(socket, addr, UUID_MISMATCH).await;
-                                }
-                            } else {
-                                log::warn!(
-                                    "Peer {} uuid mismatch: {:?} vs {:?}",
-                                    id,
-                                    rk.uuid,
-                                    peer.uuid
-                                );
-                                drop(peer);
-                                return send_rk_res(socket, addr, UUID_MISMATCH).await;
-                            }
-                            let ip_changed = peer.info.ip != ip;
-                            (
-                                peer.uuid != rk.uuid || peer.pk != rk.pk || ip_changed,
-                                ip_changed,
-                            )
-                        }
-                    };
-                    let mut req_pk = peer.read().await.reg_pk;
-                    if req_pk.1.elapsed().as_secs() > 6 {
-                        req_pk.0 = 0;
-                    } else if req_pk.0 > 2 {
-                        return send_rk_res(socket, addr, TOO_FREQUENT).await;
-                    }
-                    req_pk.0 += 1;
-                    req_pk.1 = Instant::now();
-                    peer.write().await.reg_pk = req_pk;
-                    if ip_changed {
-                        let mut lock = IP_CHANGES.lock().await;
-                        if let Some((tm, ips)) = lock.get_mut(&id) {
-                            if tm.elapsed().as_secs() > IP_CHANGE_DUR {
-                                *tm = Instant::now();
-                                ips.clear();
-                                ips.insert(ip.clone(), 1);
-                            } else if let Some(v) = ips.get_mut(&ip) {
-                                *v += 1;
-                            } else {
-                                ips.insert(ip.clone(), 1);
-                            }
-                        } else {
-                            lock.insert(
-                                id.clone(),
-                                (Instant::now(), HashMap::from([(ip.clone(), 1)])),
-                            );
-                        }
-                    }
-                    if changed {
-                        self.pm.update_pk(id, peer, addr, rk.uuid, rk.pk, ip).await;
-                    }
-                    let mut msg_out = RendezvousMessage::new();
-                    msg_out.set_register_pk_response(RegisterPkResponse {
-                        result: register_pk_response::Result::OK.into(),
-                        ..Default::default()
-                    });
-                    socket.send(&msg_out, addr).await?
-                }
-*/
+                    /*
+                                        if rk.uuid.is_empty() || rk.pk.is_empty() {
+                                            return Ok(());
+                                        }
+                                        let id = rk.id;
+                                        let ip = addr.ip().to_string();
+                                        if id.len() < 6 {
+                                            return send_rk_res(socket, addr, UUID_MISMATCH).await;
+                                        } else if !self.check_ip_blocker(&ip, &id).await {
+                                            return send_rk_res(socket, addr, TOO_FREQUENT).await;
+                                        }
+                                        let peer = self.pm.get_or(&id).await;
+                                        let (changed, ip_changed) = {
+                                            let peer = peer.read().await;
+                                            if peer.uuid.is_empty() {
+                                                (true, false)
+                                            } else {
+                                                if peer.uuid == rk.uuid {
+                                                    if peer.info.ip != ip && peer.pk != rk.pk {
+                                                        log::warn!(
+                                                            "Peer {} ip/pk mismatch: {}/{:?} vs {}/{:?}",
+                                                            id,
+                                                            ip,
+                                                            rk.pk,
+                                                            peer.info.ip,
+                                                            peer.pk,
+                                                        );
+                                                        drop(peer);
+                                                        return send_rk_res(socket, addr, UUID_MISMATCH).await;
+                                                    }
+                                                } else {
+                                                    log::warn!(
+                                                        "Peer {} uuid mismatch: {:?} vs {:?}",
+                                                        id,
+                                                        rk.uuid,
+                                                        peer.uuid
+                                                    );
+                                                    drop(peer);
+                                                    return send_rk_res(socket, addr, UUID_MISMATCH).await;
+                                                }
+                                                let ip_changed = peer.info.ip != ip;
+                                                (
+                                                    peer.uuid != rk.uuid || peer.pk != rk.pk || ip_changed,
+                                                    ip_changed,
+                                                )
+                                            }
+                                        };
+                                        let mut req_pk = peer.read().await.reg_pk;
+                                        if req_pk.1.elapsed().as_secs() > 6 {
+                                            req_pk.0 = 0;
+                                        } else if req_pk.0 > 2 {
+                                            return send_rk_res(socket, addr, TOO_FREQUENT).await;
+                                        }
+                                        req_pk.0 += 1;
+                                        req_pk.1 = Instant::now();
+                                        peer.write().await.reg_pk = req_pk;
+                                        if ip_changed {
+                                            let mut lock = IP_CHANGES.lock().await;
+                                            if let Some((tm, ips)) = lock.get_mut(&id) {
+                                                if tm.elapsed().as_secs() > IP_CHANGE_DUR {
+                                                    *tm = Instant::now();
+                                                    ips.clear();
+                                                    ips.insert(ip.clone(), 1);
+                                                } else if let Some(v) = ips.get_mut(&ip) {
+                                                    *v += 1;
+                                                } else {
+                                                    ips.insert(ip.clone(), 1);
+                                                }
+                                            } else {
+                                                lock.insert(
+                                                    id.clone(),
+                                                    (Instant::now(), HashMap::from([(ip.clone(), 1)])),
+                                                );
+                                            }
+                                        }
+                                        if changed {
+                                            self.pm.update_pk(id, peer, addr, rk.uuid, rk.pk, ip).await;
+                                        }
+                                        let mut msg_out = RendezvousMessage::new();
+                                        msg_out.set_register_pk_response(RegisterPkResponse {
+                                            result: register_pk_response::Result::OK.into(),
+                                            ..Default::default()
+                                        });
+                                        socket.send(&msg_out, addr).await?
+                                    }
+                    */
                     let response = self.handle_register_pk(rk, addr).await;
                     match response {
                         Err(err) => {
@@ -618,17 +635,17 @@ impl RendezvousServer {
                     msg_out.set_test_nat_response(res);
                     Self::send_to_sink(sink, msg_out).await;
                 }
-/*
-                Some(rendezvous_message::Union::RegisterPk(_)) => {
-                    let res = register_pk_response::Result::NOT_SUPPORT;
-                    let mut msg_out = RendezvousMessage::new();
-                    msg_out.set_register_pk_response(RegisterPkResponse {
-                        result: res.into(),
-                        ..Default::default()
-                    });
-                    Self::send_to_sink(sink, msg_out).await;
-                }
-*/
+                /*
+                                Some(rendezvous_message::Union::RegisterPk(_)) => {
+                                    let res = register_pk_response::Result::NOT_SUPPORT;
+                                    let mut msg_out = RendezvousMessage::new();
+                                    msg_out.set_register_pk_response(RegisterPkResponse {
+                                        result: res.into(),
+                                        ..Default::default()
+                                    });
+                                    Self::send_to_sink(sink, msg_out).await;
+                                }
+                */
                 Some(rendezvous_message::Union::RegisterPk(rk)) => {
                     let res = self.handle_register_pk(rk, addr).await;
                     match res {
@@ -935,25 +952,25 @@ impl RendezvousServer {
                     .post(&api_url)
                     .timeout(Duration::from_secs(2))
                     .bearer_auth(ph.token.clone())
-                    /* Note: the id should be the one of the system requesting this information (=source); 
+                    /* Note: the id should be the one of the system requesting this information (=source);
                      * here it is for the system to be connected to (=destination)
                      * We don't know the uuid of either system, so leave empty...
                      */
                     .json(&json!({ "id": ph.id, "uuid": "" }))
                     .send()
                     .await {
-                        Ok(response) => response,
-                        Err(err) => {
-                            log::error!("Error contacting API server: {}", err);
-                            msg_out.set_punch_hole_response(PunchHoleResponse {
-                                other_failure: String::from(
-                                    "Access denied: API server could not be contacted",
-                                ),
-                                ..Default::default()
-                            });
-                            return Ok((msg_out, None));
-                        },
-                    };
+                    Ok(response) => response,
+                    Err(err) => {
+                        log::error!("Error contacting API server: {}", err);
+                        msg_out.set_punch_hole_response(PunchHoleResponse {
+                            other_failure: String::from(
+                                "Access denied: API server could not be contacted",
+                            ),
+                            ..Default::default()
+                        });
+                        return Ok((msg_out, None));
+                    },
+                };
                 if response.status().is_success() {
                     let response_body: serde_json::Value = response.json().await?;
                     log::debug!(
@@ -990,61 +1007,34 @@ impl RendezvousServer {
                 return Ok((msg_out, None));
             }
         }
-        let access_check=std::env::var("ENFORCE_ACCESS_CHECKS")
-            .unwrap_or_default()
-            .to_uppercase();
-        if access_check == "Y" || access_check == "T" 
-        {
+        let access_check = std::env::var("ENFORCE_ACCESS_CHECKS")
+            .unwrap_or_default().trim().to_ascii_uppercase();
+        if !access_check.eq("N") {
             let mut msg_out = RendezvousMessage::new();
-            let api_server = std::env::var("API_SERVER")
-                .unwrap_or_else(|_| "http://127.0.0.1:21114".to_string());
-            let target_id = ph.id.clone();
-            let api_url = format!("{api_server}/api/access_check/{target_id}");
-            let client = match Client::builder().connect_timeout(Duration::from_millis(500)).build() {
-                Ok(client) => client,
-                Err(err) => {
-                    log::error!("Error building client to contact API server: {}", err);
+log::error!("Auth token for permission check: {}", ph.token);
+            let check_result = check_authorization(self.api_server.clone(), &ph.token, &ph.id).await;
+            if check_result.is_ok() {
+log::error!(
+    "Access granted for user {} to device {}",
+    check_result.clone().unwrap(),
+    ph.id
+);
+                log::debug!(
+                    "Access granted for user {} to device {}",
+                    check_result.unwrap(),
+                    ph.id
+                );
+            } else {
+log::error!("Access denied: {}", check_result.clone().unwrap_err());
+                log::debug!("Access denied: {}", check_result.unwrap_err());
+                if !access_check.eq("T") {
                     msg_out.set_punch_hole_response(PunchHoleResponse {
-                        other_failure: String::from(
-                            "Access denied: API server could not be contacted",
-                        ),
+                        other_failure: String::from("Access denied"),
                         ..Default::default()
                     });
                     return Ok((msg_out, None));
                 }
-            };
-            let mut request = client.get(&api_url).timeout(Duration::from_secs(2));
-            if !ph.token.is_empty() {
-                request = request.bearer_auth(ph.token.clone());
             }
-            match request.send().await {
-                Ok(response) => {
-                    if response.status().is_success() {
-                        log::debug!("Access granted for user {} to device {}", "???", target_id);
-                    } else {
-                        log::debug!("Access denied: {}", response.status());
-                        if access_check!="T" {
-                            msg_out.set_punch_hole_response(PunchHoleResponse {
-                                other_failure: String::from("Access denied"),
-                                ..Default::default()
-                            });
-                            return Ok((msg_out, None));
-                        }
-                    }
-                },
-                Err(err) => {
-                    log::error!("Error contacting API server: {}", err);
-                    if access_check!="T" {
-                        msg_out.set_punch_hole_response(PunchHoleResponse {
-                            other_failure: String::from(
-                                "Access denied: API server could not be contacted",
-                            ),
-                            ..Default::default()
-                        });
-                        return Ok((msg_out, None));
-                    }
-                },
-            };
         }
         let id = ph.id;
         // punch hole request from A, relay to B,
@@ -1065,7 +1055,7 @@ impl RendezvousServer {
                 });
                 return Ok((msg_out, None));
             }
-            
+
             // record punch hole request (from addr -> peer id/peer_addr)
             {
                 let from_ip = try_into_v4(addr).ip().to_string();

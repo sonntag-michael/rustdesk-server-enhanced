@@ -29,7 +29,7 @@ services:
       # (T=Test; check permissions and log result, but always grant anyway)
       ENFORCE_ACCESS_CHECKS: T
       # Adress of API server for checking logged-in status and access permissions
-      # Example: https://rustdesk.domain.example/
+      # Example: https://rustdesk.domain.example:21114/
       API_SERVER: ${API_SERVER}
     logging:
       driver: journald
