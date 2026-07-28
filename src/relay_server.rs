@@ -8,7 +8,7 @@ use hbb_common::{
     protobuf::Message as _,
     rendezvous_proto::*,
     sleep,
-    tcp::{listen_any, FramedStream},
+    tcp::FramedStream,
     timeout,
     tokio::{
         self,
@@ -24,7 +24,7 @@ use std::{
     collections::{HashMap, HashSet},
     io::prelude::*,
     io::Error,
-    net::SocketAddr,
+    net::{IpAddr, SocketAddr},
     sync::atomic::{AtomicUsize, Ordering},
 };
 use base64::prelude::*;
@@ -47,7 +47,11 @@ const BLACKLIST_FILE: &str = "blacklist.txt";
 const BLOCKLIST_FILE: &str = "blocklist.txt";
 
 #[tokio::main(flavor = "multi_thread")]
-pub async fn start(port: &str, key: &str) -> ResultType<()> {
+pub async fn start_with_bind(
+    bind_addr: Option<IpAddr>,
+    port: &str,
+    key: &str,
+) -> ResultType<()> {
     let key = get_server_sk(key);
     if let Ok(mut file) = std::fs::File::open(BLACKLIST_FILE) {
         let mut contents = String::new();
@@ -86,7 +90,13 @@ pub async fn start(port: &str, key: &str) -> ResultType<()> {
     let main_task = async move {
         loop {
             log::info!("Start");
-            io_loop(listen_any(port).await?, listen_any(port2).await?, &key).await;
+            io_loop(
+                crate::common::listen_tcp(bind_addr, port).await?,
+                crate::common::listen_tcp(bind_addr, port2).await?,
+                crate::common::listen_console(bind_addr, port).await?,
+                &key,
+            )
+            .await;
         }
     };
     let listen_signal = crate::common::listen_signal();
@@ -97,8 +107,8 @@ pub async fn start(port: &str, key: &str) -> ResultType<()> {
 }
 
 fn check_params() {
-    let tmp = std::env::var("DOWNGRADE_THRESHOLD")
-        .map(|x| x.parse::<f64>().unwrap_or(0.))
+    let tmp = crate::common::get_arg("DOWNGRADE_THRESHOLD")
+        .parse::<f64>()
         .unwrap_or(0.);
     if tmp > 0. {
         DOWNGRADE_THRESHOLD_100.store((tmp * 100.) as _, Ordering::SeqCst);
@@ -107,8 +117,8 @@ fn check_params() {
         "DOWNGRADE_THRESHOLD: {}",
         DOWNGRADE_THRESHOLD_100.load(Ordering::SeqCst) as f64 / 100.
     );
-    let tmp = std::env::var("DOWNGRADE_START_CHECK")
-        .map(|x| x.parse::<usize>().unwrap_or(0))
+    let tmp = crate::common::get_arg("DOWNGRADE_START_CHECK")
+        .parse::<usize>()
         .unwrap_or(0);
     if tmp > 0 {
         DOWNGRADE_START_CHECK.store(tmp * 1000, Ordering::SeqCst);
@@ -117,8 +127,8 @@ fn check_params() {
         "DOWNGRADE_START_CHECK: {}s",
         DOWNGRADE_START_CHECK.load(Ordering::SeqCst) / 1000
     );
-    let tmp = std::env::var("LIMIT_SPEED")
-        .map(|x| x.parse::<f64>().unwrap_or(0.))
+    let tmp = crate::common::get_arg("LIMIT_SPEED")
+        .parse::<f64>()
         .unwrap_or(0.);
     if tmp > 0. {
         LIMIT_SPEED.store((tmp * 1024. * 1024.) as usize, Ordering::SeqCst);
@@ -127,8 +137,8 @@ fn check_params() {
         "LIMIT_SPEED: {}Mb/s",
         LIMIT_SPEED.load(Ordering::SeqCst) as f64 / 1024. / 1024.
     );
-    let tmp = std::env::var("TOTAL_BANDWIDTH")
-        .map(|x| x.parse::<f64>().unwrap_or(0.))
+    let tmp = crate::common::get_arg("TOTAL_BANDWIDTH")
+        .parse::<f64>()
         .unwrap_or(0.);
     if tmp > 0. {
         TOTAL_BANDWIDTH.store((tmp * 1024. * 1024.) as usize, Ordering::SeqCst);
@@ -138,8 +148,8 @@ fn check_params() {
         "TOTAL_BANDWIDTH: {}Mb/s",
         TOTAL_BANDWIDTH.load(Ordering::SeqCst) as f64 / 1024. / 1024.
     );
-    let tmp = std::env::var("SINGLE_BANDWIDTH")
-        .map(|x| x.parse::<f64>().unwrap_or(0.))
+    let tmp = crate::common::get_arg("SINGLE_BANDWIDTH")
+        .parse::<f64>()
         .unwrap_or(0.);
     if tmp > 0. {
         SINGLE_BANDWIDTH.store((tmp * 1024. * 1024.) as usize, Ordering::SeqCst);
@@ -324,7 +334,12 @@ async fn check_cmd(cmd: &str, limiter: Limiter) -> String {
     res
 }
 
-async fn io_loop(listener: TcpListener, listener2: TcpListener, key: &str) {
+async fn io_loop(
+    listener: TcpListener,
+    listener2: TcpListener,
+    listener_console: Option<TcpListener>,
+    key: &str,
+) {
     check_params();
     let limiter = <Limiter>::new(TOTAL_BANDWIDTH.load(Ordering::SeqCst) as _);
     loop {
@@ -349,6 +364,18 @@ async fn io_loop(listener: TcpListener, listener2: TcpListener, key: &str) {
                     }
                     Err(err) => {
                        log::error!("listener2.accept failed: {}", err);
+                       break;
+                    }
+                }
+            }
+            res = crate::common::accept_or_pending(listener_console.as_ref()) => {
+                match res {
+                    Ok((stream, addr))  => {
+                        stream.set_nodelay(true).ok();
+                        handle_connection(stream, addr, &limiter, key, false).await;
+                    }
+                    Err(err) => {
+                       log::error!("console listener.accept failed: {}", err);
                        break;
                     }
                 }

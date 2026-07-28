@@ -13,6 +13,7 @@ fn main() -> ResultType<()> {
         .write_mode(WriteMode::Async)
         .start()?;
     let args = vec![
+        Arg::new("bind").short('b').long("bind").value_parser(clap::builder::NonEmptyStringValueParser::new()).help("Sets the IP address to bind to (default: all interfaces)"),
         Arg::new("port").short('p').long("port").value_parser(clap::builder::NonEmptyStringValueParser::new()).default_value(RELAY_PORT.to_string()).help("Sets the listening port"),
         Arg::new("key").short('k').long("key").value_parser(clap::builder::NonEmptyStringValueParser::new()).help("Only allow the client with the same key"),
     ];
@@ -24,23 +25,29 @@ fn main() -> ResultType<()> {
         .get_matches();
     if let Ok(v) = ini::Ini::load_from_file(".env") {
         if let Some(section) = v.section(None::<String>) {
-            unsafe {
-                section.iter().for_each(|(k, v)| std::env::set_var(k, v));
-            }
+            section.iter().for_each(|(k, v)| common::set_arg(k, v));
         }
     }
     let mut port = RELAY_PORT;
-    if let Ok(v) = std::env::var("PORT") {
+    if let Some(v) = common::get_arg_opt("PORT") {
         let v: i32 = v.parse().unwrap_or_default();
         if v > 0 {
             port = v + 1;
         }
     }
-    start(
+    let bind_default = common::get_arg("BIND");
+    let bind = matches
+        .get_one::<String>("bind")
+        .unwrap_or(&bind_default);
+    let bind_addr = common::parse_bind_address(&bind)?;
+    let key_default = common::get_arg("KEY");
+    let key = matches
+        .get_one::<String>("key")
+        .unwrap_or(&key_default);
+    start_with_bind(
+        bind_addr,
         matches.get_one::<String>("port").unwrap_or(&port.to_string()),
-        matches
-            .get_one::<String>("key")
-            .unwrap_or(&std::env::var("KEY").unwrap_or_default()),
+        &key,
     )?;
     Ok(())
 }

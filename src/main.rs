@@ -16,6 +16,7 @@ fn main() -> ResultType<()> {
         .start()?;
     let args = vec![
         Arg::new("config").short('c').long("config").value_parser(clap::builder::NonEmptyStringValueParser::new()).help("Sets a custom config file"),
+        Arg::new("bind").short('b').long("bind").value_parser(clap::builder::NonEmptyStringValueParser::new()).help("Sets the IP address to bind to (default: all interfaces)"),
         Arg::new("port").short('p').long("port").value_parser(clap::builder::NonEmptyStringValueParser::new()).default_value(RENDEZVOUS_PORT.to_string()).help("Sets the listening port"),
         Arg::new("serial").short('s').long("serial").value_parser(clap::builder::NonEmptyStringValueParser::new()).default_value("0".to_string()).help("Sets configure update serial number"),
         Arg::new("rendezvous-servers").short('R').long("rendezvous-servers").value_parser(clap::builder::NonEmptyStringValueParser::new()).help("Sets rendezvous servers, separated by comma"),
@@ -30,9 +31,16 @@ fn main() -> ResultType<()> {
     if port < 3 {
         bail!("Invalid port");
     }
+    let bind_addr = parse_bind_address(&get_arg("bind"))?;
     let rmem = get_arg("rmem").parse::<usize>().unwrap_or(RMEM);
     let serial: i32 = get_arg("serial").parse().unwrap_or(0);
     crate::common::check_software_update();
-    RendezvousServer::start(port, serial, &get_arg_or("key", "-".to_owned()), rmem)?;
+    RendezvousServer::start_with_bind(
+        bind_addr,
+        port,
+        serial,
+        &get_arg_or("key", "-".to_owned()),
+        rmem,
+    )?;
     Ok(())
 }
