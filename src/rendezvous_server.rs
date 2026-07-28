@@ -930,14 +930,8 @@ impl RendezvousServer {
         {
             let mut msg_out = RendezvousMessage::new();
             if !ph.token.is_empty() {
-log::error!("Auth token for logged-in check: {}", ph.token);
                 let check_result = check_logged_in(self.api_server.clone(), &ph.token).await;
                 if let Ok(check_result) = check_result {
-log::error!(
-    "Logged in user: Username={}, Status={}",
-    check_result.name.clone(),
-    check_result.status,
-);
                     log::debug!(
                     "Logged in user: Username={}, Status={}",
                     check_result.name,
@@ -945,7 +939,6 @@ log::error!(
                 );
                     if check_result.status != 1 {
                         // "enum UserStatus { kDisabled=0, kNormal=1, kUnverified=-1 }"
-log::error!("Error checking logged in: User not enabled: {}", check_result.status);
                         log::debug!("Error checking logged in: User not enabled: {}", check_result.status);
                         msg_out.set_punch_hole_response(PunchHoleResponse {
                             other_failure: String::from("Access denied: Your account is not enabled"),
@@ -954,7 +947,6 @@ log::error!("Error checking logged in: User not enabled: {}", check_result.statu
                         return Ok((msg_out, None));
                     }
                 } else {
-log::error!("User not logged in: {}", check_result.clone().unwrap_err());
                     log::debug!("Access denied: {}", check_result.unwrap_err());
                     msg_out.set_punch_hole_response(PunchHoleResponse {
                         other_failure: String::from(
@@ -978,23 +970,14 @@ log::error!("User not logged in: {}", check_result.clone().unwrap_err());
             .unwrap_or_default().trim().to_ascii_uppercase();
         if !access_check.eq("N") {
             let mut msg_out = RendezvousMessage::new();
-log::error!("Auth token for permission check: {}", ph.token);
-log::error!("System to connect to: {}", ph.id);
-log::error!("Type of connection: {:?}", ph.conn_type);
             let check_result = check_authorization(self.api_server.clone(), &ph.token, &ph.id, ConnType::from_i32(ph.conn_type.value())).await;
             if let Ok(check_result) = check_result {
-log::error!(
-    "Access granted for user {} to device {}",
-    check_result.clone(),
-    ph.id
-);
                 log::debug!(
                     "Access granted for user {} to device {}",
                     check_result,
                     ph.id
                 );
             } else {
-log::error!("Access denied: {}", check_result.clone().unwrap_err());
                 log::debug!("Access denied: {}", check_result.unwrap_err());
                 if !access_check.eq("T") {
                     msg_out.set_punch_hole_response(PunchHoleResponse {
