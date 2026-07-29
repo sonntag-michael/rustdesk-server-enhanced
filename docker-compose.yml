@@ -7,6 +7,7 @@ services:
   hbbs:
     container_name: hbbs
     ports:
+      - 21114:21114
       - 21115:21115
       - 21116:21116
       - 21116:21116/udp
@@ -15,6 +16,7 @@ services:
     command: hbbs
     volumes:
       - ./data:/root:z
+      - geoipupdate_data:/usr/share/GeoIP:ro # GeoIP database; updated by separate container (see below)
     networks:
       - rustdesk-net
     depends_on:
@@ -22,19 +24,36 @@ services:
     restart: unless-stopped
     environment:
       # Only allow logged-in users to control other systems: Y/N
-      LOGGED_IN_ONLY: N
-      # Always use the relay, even within the same subnet: Y/N
-      ALWAYS_USE_RELAY: N
+      LOGGED_IN_ONLY: ${LOGGED_IN_ONLY:-Y}
       # Enforce access checks (requires the API server!): Y/N/T
       # (T=Test; check permissions and log result, but always grant anyway)
-      ENFORCE_ACCESS_CHECKS: T
-      # Adress of API server for checking logged-in status and access permissions
-      # Example: https://rustdesk.domain.example:21114/
-      API_SERVER: ${API_SERVER}
-    logging:
-      driver: journald
-      options:
-        tag: docker/rustdesk-hbbs
+      ENFORCE_ACCESS_CHECKS: ${ENFORCE_ACCESS_CHECKS:-Y}
+      # Always use the relay, even within the same subnet: Y/N
+      ALWAYS_USE_RELAY: ${ALWAYS_USE_RELAY:-N}
+      # Path for backend database
+      DB_PATH: /root/database.db
+      # Path for the GeoIP database; should be a shared volume with geoipupdate
+      GEODB_PATH: /usr/share/GeoIP/GeoLite2-City.mmdb # Use GeoIP2-City.mmdb for paid version
+      # Optional: Log level for API server
+      API_LOG_LEVEL: ${API_LOG_LEVEL:-Normal}
+      # Define the following values in .env!
+      # Key used for protecting cookies and against XSRF; long random value
+      SECRET_KEY: ${SECRET_KEY}
+      # Basic information for imprint page (so you don't have to change the source code)
+      IMPRINT_NAME: ${IMPRINT_NAME}
+      IMPRINT_MAIL: ${IMPRINT_MAIL}
+      IMPRINT_COMPANY: ${IMPRINT_COMPANY}
+      IMPRINT_WEBSITE: ${IMPRINT_WEBSITE}
+      # For SSRF protection of API: Host header is expected to be this (domain name only, no protocol/port)
+      SERVER_DOMAIN_NAME: ${SERVER_DOMAIN_NAME}
+#    logging:
+#      driver: journald
+#      options:
+#        tag: docker/rustdesk-hbbs
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
 
   hbbr:
     container_name: hbbr
@@ -48,8 +67,47 @@ services:
     networks:
       - rustdesk-net
     restart: unless-stopped
-    logging:
-      driver: journald
-      options:
-        tag: docker/rustdesk-hbbr
+#    logging:
+#      driver: journald
+#      options:
+#        tag: docker/rustdesk-hbbr
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
 
+  geoipupdate:
+    container_name: geoipupdate
+    image: ghcr.io/maxmind/geoipupdate
+    # Permission problem: cannot write to /usr/share/GeoIP
+    #user: "1001:1001"
+    restart: unless-stopped
+    environment:
+      - GEOIPUPDATE_EDITION_IDS=GeoLite2-City # Use "GeoIP2-City" for paid version
+      - GEOIPUPDATE_FREQUENCY=72
+      # Define the following values in .env!
+      - GEOIPUPDATE_ACCOUNT_ID=${GEOIPUPDATE_ACCOUNT_ID:?GeoIP account id not configured}
+      - GEOIPUPDATE_LICENSE_KEY=${GEOIPUPDATE_LICENSE_KEY:?GeoIP license key not configured}
+    volumes:
+      - geoipupdate_data:/usr/share/GeoIP:z
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "test $(stat -c %Y /usr/share/GeoIP) -gt $(($(date +%s) -
+            $$GEOIPUPDATE_FREQUENCY * 60 * 61 )) || exit 1;",
+        ]
+      interval: 30s
+      timeout: 10s
+#    logging:
+#      driver: journald
+#      options:
+#        tag: docker/geoipupdate
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  geoipupdate_data:
+    driver: local
