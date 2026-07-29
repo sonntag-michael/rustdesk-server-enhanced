@@ -5,7 +5,7 @@ WORKDIR /src
 RUN apk update && apk add openssl openssl-dev openssl-libs-static make g++ file 
 RUN --mount=type=bind,source=src,target=src,readwrite \
     --mount=type=bind,source=libs,target=libs,readwrite \
-    --mount=type=bind,source=rustdesk-api-server,target=rustdesk-api-server,readwrite \
+    --mount=type=bind,source=rustdesk-api-server/rust_backend,target=rustdesk-api-server/rust_backend,readwrite \
     --mount=type=bind,source=Cargo.toml,target=Cargo.toml \
     --mount=type=bind,source=Cargo.lock,target=Cargo.lock,readwrite \
     --mount=type=bind,source=db_v2.sqlite3,target=db_v2.sqlite3,readwrite \
