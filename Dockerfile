@@ -28,7 +28,7 @@ COPY ./rustdesk-api-server/rd-status/ .
 RUN npm run build --omit=dev --omit=optional --omit=peer
 
 FROM scratch
-#USER 1001
+USER 1001
 COPY --from=build-backend /hbbr /hbbs /rustdesk-utils /usr/bin/
 COPY --from=build-frontend --chmod=+rX /app/dist/rd-status/browser/ /var/www/html/frontend
 WORKDIR /root

@@ -22,6 +22,7 @@ services:
     depends_on:
       - hbbr
     restart: unless-stopped
+    user: "1001:1001"
     environment:
       # Only allow logged-in users to control other systems: Y/N
       LOGGED_IN_ONLY: ${LOGGED_IN_ONLY:-Y}
