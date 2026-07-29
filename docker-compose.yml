@@ -67,10 +67,10 @@ services:
     networks:
       - rustdesk-net
     restart: unless-stopped
-#    logging:
-#      driver: journald
-#      options:
-#        tag: docker/rustdesk-hbbr
+    logging:
+      driver: journald
+      options:
+        tag: docker/rustdesk-hbbr
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -99,10 +99,10 @@ services:
         ]
       interval: 30s
       timeout: 10s
-#    logging:
-#      driver: journald
-#      options:
-#        tag: docker/geoipupdate
+    logging:
+      driver: journald
+      options:
+        tag: docker/rustdesk-geoipupdate
     security_opt:
       - no-new-privileges:true
     cap_drop:
